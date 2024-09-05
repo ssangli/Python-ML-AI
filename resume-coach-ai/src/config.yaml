@@ -1,0 +1,17 @@
+LLM_CONFIG:
+  MODEL_NAME: "TheBloke/Llama-2-13b-Chat-GPTQ"
+
+GENERATOR_CONFIG:
+  max_tokens: 1024
+  temperature: 0.0
+  top_p: 0.95
+  top_k: 3
+  do_sample: True
+  repetition_penalty: 1.15
+
+TEXT_SPLITTER_CONFIG:
+  chunk_size: 1000
+  chunk_overlap: 200
+
+
+  
