@@ -1,0 +1,11 @@
+1. Upload PDF
+2. Generate summary
+3. Chat with PDF
+
+TODO:
+1. Chat with document
+
+Enhancements
+1. Fix incrementally uploading files
+2. Store summary on redis
+
