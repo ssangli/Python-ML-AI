@@ -1,0 +1,9 @@
+LLM_MODEL: "llama3"
+
+EMBED_MODEL: "SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')"
+
+TEXT_SPLITTER:
+  chunk_size: 1000
+  chunk_overlap: 150
+
+DB_PATH: "./chromadb"
