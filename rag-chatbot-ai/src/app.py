@@ -1,6 +1,6 @@
 from langchain_community.llms import Ollama
 import streamlit as st
-import uuid
+import uuid, re, io, sys
 import yaml
 import pprint
 from langchain_community.document_loaders import PyMuPDFLoader, PyPDFLoader
@@ -8,10 +8,11 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter, CharacterTex
 from langchain.docstore.document import Document
 from sentence_transformers import SentenceTransformer
 from langchain_community.embeddings import HuggingFaceEmbeddings, SentenceTransformerEmbeddings
-from langchain.vectorstores import Chroma
+from langchain_community.vectorstores import Chroma
 import PyPDF2
 from io import StringIO
 from llm import LLMInterface
+import ragUtil
 
 # Load the config
 with open("config.yaml", 'r') as f:
@@ -28,96 +29,133 @@ if "start_session" not in st.session_state:
     st.session_state["start_session"] = False
 if "history" not in st.session_state:
     st.session_state["history"] = []
-if "button_clicked" not in st.session_state:
-    st.session_state["button_clicked"] = False
+if "pdf_urls" not in st.session_state:
+    st.session_state["pdf_urls"] = []
 if "summary" not in st.session_state:
     st.session_state["summary"] = []
+if "embed_generators" not in st.session_state:
+    st.session_state["embed_generators"] = []
+if "file_embed_map" not in st.session_state:
+    st.session_state["file_embed_map"] = {}
+if "uploaded_file" not in st.session_state:
+    st.session_state["uploaded_file"] = False
+if "disable_pdf_url_link" not in st.session_state:
+    st.session_state["disable_pdf_url_link"] = False
+if "title" not in st.session_state:
+    st.session_state["title"] = None
 
 ##################### DB ############################
-def process_document(cfg, uploaded_files):
-    data = []
-    for f in uploaded_files:
-        pdf_reader = PyPDF2.PdfReader(f)
-        metadata = pdf_reader.metadata
-        i = 1
-        for page in pdf_reader.pages:
-            data.append(Document(page_content=page.extract_text(), metadata = {'page' : i}))
-            i += 1
-    # create a text splitter
-    text_splitter = CharacterTextSplitter(
-            chunk_size=cfg['TEXT_SPLITTER']['chunk_size'],
-            chunk_overlap=cfg['TEXT_SPLITTER']['chunk_overlap'],
-            separator="\n",
-            )
-    docs = text_splitter.split_documents(data)
-    embed_model = SentenceTransformerEmbeddings(model_name="all-MiniLM-L6-V2", model_kwargs = {"trust_remote_code":True})
-    db = Chroma.from_documents(docs, embed_model, persist_directory=cfg['DB_PATH'])
-    db.persist()
-    return db
-##################### DB ############################
+def write_to_chat_window():
+    for i in st.session_state["history"]:
+        with st.chat_message(name=i["role"]):
+            st.write(i["content"])
+
+def write_to_text_area():
+    if st.session_state['title'] is not None:
+        st.markdown(st.session_state['title'])
+    for i in st.session_state["summary"]:
+        st.write(i["name"])
+        st.write(i["content"])
 
 def generate_session_id():
     myuuid = uuid.uuid4()
     return str(myuuid)
 
-def respond(query : str, uploaded_files, state):
+def respond(query : str, state : dict) -> str:
     print("messages {}, session state {}".format(query, state))
-    db = process_document(cfg, uploaded_files)
-    # Search for top 3 documents that match the query from the user
-    docs = db.similarity_search(query, k = 3)
-    print("Docs : ", docs)
-    state["history"].append({"role" : "user",
-                             "content" : query})
-    #response = llm_interface.get_llm_response(query, state)
-    llm_interface.get_llm_response(query, docs, state)
-    print("State  in respond 2 ", state)
+    # Extract the URL
+    print("-------------Respond Module --------------")
+    print(query)
+    print("------------------------------------------")
+    llm_interface.get_llm_response(query, state)
 
-def read_pdf(uploaded_file):
-    reader = PyPDF2.PdfReader(uploaded_file)
-    data = ""
-    for page in reader.pages:
-        data += page.extract_text()
-    return data
+def summarizer():
+    for filename, embed_gen in st.session_state["file_embed_map"].items():
+        print("Filename {}".format(filename))
+        response = llm_interface.generate_summary(embed_gen)
+        title = embed_gen.get_title()
+        st.session_state["summary"].append({"name" : filename, "content" :response})
+        st.session_state["history"].append({"role" : "assistant", "content" : response})
+        st.session_state["title"] = title
+        write_to_text_area()
 
-def summarizer_helper(uploaded_file):
-        data = read_pdf(uploaded_file)
-        response = llm_interface.generate_summary(data)
-        st.session_state["summary"].append({"name" : uploaded_file.name,
-                                                    "content" : response})
-
-def summarize(uploaded_files):
-    for f in uploaded_files:
+def summarizer_helper_old(uploaded_file):
+    print("In summarize helper.....", uploaded_file)
+    embed_generator = ragUtil.EmbeddingGenerator(uploaded_file)
+    st.session_state["embed_generators"].append(embed_generator)
+    st.session_state["file_embed_map"] = {uploaded_file: embed_generator}
+    response = llm_interface.generate_summary(embed_generator)
+    st.session_state["summary"].append({"name" : uploaded_file,
+                                                "content" : response})
+    st.session_state["history"].append({"role" : "assistant",
+                                        "content" : response})
+def summarize_old():
+    if uploaded_file is not None:
         if len(st.session_state["summary"]) == 0:
-            summarizer_helper(f)
+            summarizer_helper(uploaded_file.name)
         else:
             for i in st.session_state["summary"]:
-                if "name" in i and i["name"] == f.name:
+                if "name" in i and i["name"] == uploaded_file.name:
                     return
-            summarizer_helper(f)
-
+            summarizer_helper(uploaded_file.name)
+    elif url_doc_link is not None:
+        print("Document link {}".format(url_doc_link))
+        summarizer_helper(url_doc_link)
+    else:
+        st.write("Please either upload a pdf or provide link to document")
+    write_to_text_area()
 ############################ STATE ###################
 
-def click_action(uploaded_files):
-    summarize(uploaded_files)
-    for i in st.session_state["summary"]:
-        st.write(i["name"])
-        st.write(i["content"])
+def toggle():
+    if url_doc_link is not None:
+        st.session_state["disable_pdf_url_link"] = True
+
+def clear():
+    st.session_state["disable_pdf_url_link"] = False
+    st.session_state["uploaded_file"] = False
+
+def on_file_submit():
+    if st.session_state["start_session"] is False:
+        st.session_state["start_session"] = True
+        st.session_state["id"] = generate_session_id()
+        # Create new embed embed_generator
+        if uploaded_file is not None:
+            filename = uploaded_file.name
+        else:
+            filename = url_doc_link
+        embed_gen = ragUtil.EmbeddingGenerator(filename)
+        st.session_state["file_embed_map"] = {filename : embed_gen}
+        # Extract title and key topics from this document
+        st.session_state['title'] = embed_gen.get_title()
+        write_to_text_area()
+
 
 with st.sidebar:
     st.title("Upload Document")
-    uploaded_files = st.file_uploader(label="FileUpload", accept_multiple_files = True, type=("pdf"), label_visibility="hidden")
-    st.button("Summarize", on_click=click_action(uploaded_files))
+    uploaded_file = st.file_uploader(label="FileUpload", accept_multiple_files = False, type=("pdf"), label_visibility="hidden", on_change=on_file_submit)
+    if uploaded_file is not None:
+        st.session_state["uploaded_file"] = True
+    st.title("OR")
+    st.title("Provide URL link")
+    url_doc_link = st.text_input(
+        "Enter document URL 👇",
+        disabled=st.session_state["disable_pdf_url_link"],
+        on_change=toggle,
+    )
+    col1, col2, col3= st.columns(3)
+    with col1:
+        st.button("Submit", on_click= on_file_submit)
+    with col2:
+        st.button("Summarize", on_click = summarizer)
+    with col3:
+        st.button("Clear", on_click = clear)
 
 st.title("Chat with your document")
 if __name__ == "__main__":
+    #st.write("Hi, I am your arxiv chatbot. Upload a PDF or a URL and start chatting with your document")
     if prompt := st.chat_input():
-        if len(uploaded_files) == 0:
-            st.info("Please upload file to continue")
-            st.stop()
-    
         st.chat_message("user").write(prompt)
-        respond(prompt, uploaded_files, st.session_state)
-        for i in st.session_state["history"]:
-            with st.chat_message(name=i["role"]):
-                st.write(i["content"])
-
+        st.session_state["history"].append({"role" : "user",
+                                            "content" : prompt})
+        respond(prompt,st.session_state)
+        write_to_chat_window()
