@@ -1,0 +1,9 @@
+RAG-Chatbot : Retreival Augmented Generation (RAG) chatbot using llama3 (Ollama), Lanchain & streamlit for frontend.
+
+Currently supports only PDF's. It reads in either an uploaded PDF or link to a PDF URL as in arxiv documents
+Features:
+- Summarize the document
+- Chat with the document. Model incorporates memory for enhanced user experience
+
+To run:
+streamlit run app.py
