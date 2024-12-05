@@ -7,9 +7,6 @@ Features:
 
 **To run:**
 streamlit run app.py
-=======
-To run:
-streamlit run src/app.py
 
 **UI:**
 
