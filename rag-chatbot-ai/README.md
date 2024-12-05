@@ -6,7 +6,7 @@ Features:
 - Chat with the document. Model incorporates memory for enhanced user experience
 
 To run:
-streamlit run app.py
+streamlit run src/app.py
 
 UI:
 
