@@ -13,6 +13,12 @@ from sentence_transformers import SentenceTransformer
 from langchain.vectorstores import Chroma
 from sklearn.cluster import KMeans
 import networkx as nx
+from keybert import KeyBERT
+import spacy
+#import pytextrank
+from collections import Counter
+from text_processing import TextPreprocess
+from yake import KeywordExtractor
 
 with open("config.yaml", 'r') as f:
     cfg = yaml.safe_load(f)
@@ -157,9 +163,48 @@ def generate_summary(data, embeddings):
         response = chain.invoke({"context" : context})
         responses.append(response)
     return responses
+"""
+def extract_keywords_with_textrank(data):
+    nlp = spacy.load("en_core_web_sm")
+    nlp.add_pipe("textrank")
+    keywords = nlp(data)
+    return keywords[:10]
+    """
+
+def extract_keywords_with_keybert(data):
+    model = KeyBERT('distilbert-base-nli-mean-tokens')
+    keywords = model.extract_keywords(data)
+    return keywords[:10]
+
+def extract_keywords_with_spacy(data):
+    nlp = spacy.load("en_core_web_sm")
+    pos_tag = ['PROPN', 'ADJ', 'NOUN']
+    keywords = []
+    for d in data:
+        if d in pos_tag:
+            keywords.append(d)
+    output = set(keywords)
+    return Counter(output).most_common(10)
+
+def extract_keywords_with_yake(data):
+    kw_extractor = KeywordExtractor()
+    keywords = kw_extractor.extract_keywords(data)
+    return keywords[:10]
+
+def extract_keywords(data):
+    extract_funcs = {"keybert" : extract_keywords_with_keybert,
+                     "spacy" : extract_keywords_with_spacy,
+                     "yake" : extract_keywords_with_yake}
+    for name, func in extract_funcs.items():
+        top_10 = func(data)
+        print(name)
+        print(top_10)
 
 if __name__ == '__main__':
     data = read_file(sys.argv[1])
+    preprocessed_data = TextPreprocess.preprocess_data(data)
+    extract_keywords(preprocessed_data)
+
     data_chunks = split_document_on_sentence(data)
     embeddings = generate_embeddings(embed_model, data_chunks)
     summary = generate_summary(data_chunks, embeddings)

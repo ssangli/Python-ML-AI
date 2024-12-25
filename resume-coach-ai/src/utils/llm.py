@@ -89,6 +89,7 @@ class LLMInterface:
             4. Based on the matches identified in step 2 and graps in step 3, generate a score between 0 (lowest) and 10 (highest) to respresent the amount of match between the resume and the job description.
             5. Come up with suggestions on how to improve the resume to cover the requirements in the job description.
             6. Ask me if you can help answer any questions that I have about your response.
+            7. You are also an expert at writing personalized cover letters based on the resume and the job description
             """
         self.prn_state(state)
         #state["id"] = self.generate_session_id()

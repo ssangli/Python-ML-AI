@@ -47,6 +47,8 @@ class LLMInterface:
         prompt = ChatPromptTemplate.from_template(template)
         chain = prompt | self.llm
         response = chain.invoke({"context" : context})
+        # get _keywords
+        keywords = embed_generator.extract_keywords
         print("Summary........")
         print(response)
         return response
@@ -64,7 +66,7 @@ class LLMInterface:
         chain = prompt | self.llm
         response = chain.invoke({"data" : data})
         print("Queries ")
-        print(response)
+        print(keywords + response)
 
     def get_llm_response(self, user_message, state):
         """
