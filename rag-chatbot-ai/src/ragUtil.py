@@ -2,9 +2,12 @@ from langchain_community.document_loaders import PyMuPDFLoader, PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter, CharacterTextSplitter
 from sentence_transformers import SentenceTransformer
 from langchain_community.vectorstores import Chroma
+from sklearn.feature_extraction.text import TfidfVectorizer
 import requests, io, PyPDF2, re, sys, yaml
 import numpy as np
 import networkx as nx
+
+import text_processing
 
 with open("config.yaml", 'r') as f:
     cfg = yaml.safe_load(f)
@@ -29,14 +32,17 @@ class VectorDB:
         db = Chroma.from_documents(docs, embeddings, persistent_directory=cfg['DB_PATH'])
         return db
 
+
 class EmbeddingGenerator:
     _data_chunks = []
     _embeddings = np.array([])
     _title = None
+    _keywords = []
 
     def __init__(self, filename):
         print("filename : ", filename)
         pdf_url = re.search(r"http.*", filename)
+        data = ""
         if pdf_url is not None:
             data = self.read_pdf_url(pdf_url[0])
         else:
@@ -45,6 +51,8 @@ class EmbeddingGenerator:
         print("Title : {}".format(self._title))
         if self._title is not None:
             data = "Title : " + self._title + data
+        # extract keywords
+        self._extract_keywords(data)
         self.split_document_with_charsplitter(data)
         self.create_embeddings()
 
@@ -67,7 +75,7 @@ class EmbeddingGenerator:
             data += p.page_content
         return data
 
-    def extract_title(self, pdf_reader):
+    def _extract_title(self, pdf_reader):
         try:
             if pdf_reader.metadata and 'Title' in pdf_reader.metadata:
                 self._title = pdf_reader.metadata['Title']
@@ -85,7 +93,7 @@ class EmbeddingGenerator:
         response = requests.get(url)
         pdf_file = io.BytesIO(response.content)
         pdf_reader = PyPDF2.PdfReader(pdf_file)
-        self._title = self.extract_title(pdf_reader)
+        self._title = self._extract_title(pdf_reader)
         data = ""
         for d in pdf_reader.pages:
             data += d.extract_text()
@@ -192,5 +200,11 @@ class EmbeddingGenerator:
             sentences.append(' '.join(mod_sentence))
         return sentences
 
-    def extract_title_key_topics(self, filename):
-        key_topics = self.extract_topics()
+    def _extract_keywords(self, data):
+        mod_data = text_processing.preprocess_tfidf(data)
+        vectorizer = TfidfVectorizer()
+        matrix = vectorizer.fit_transform([mod_data])
+        _keywords = matrix.get_feature_names_out()
+
+    def get_keywords(self):
+        return _keywords[:7]
