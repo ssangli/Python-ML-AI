@@ -4,25 +4,18 @@ from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.chat_history import BaseChatMessageHistory
 from langchain_core.runnables.history import RunnableWithMessageHistory
 import uuid
-import yaml
 
-###############
 ###### LLM #####
 class LLMInterface:
-    system_prompt = ""
-    with open("utils/prompt.yaml", "r") as f:
-        system_prompt = yaml.safe_load(f)
-
     def __init__(self, llm):
-        self.llm = llm
-        self.prompt = ChatPromptTemplate.from_messages([("system", self.system_prompt["SYSTEM_PROMPT"]), MessagesPlaceholder(
-            variable_name="history"), ("human", "{input}"), ])
+        self.prompt = ChatPromptTemplate.from_messages([("system", "You are a helpful AI bot."), MessagesPlaceholder(
+            variable_name="chat_history"), ("human", "{input}"), ])
         self.chain = self.prompt | llm
         self.chain_with_history = RunnableWithMessageHistory(
             self.chain,
             self.get_message_history,
             input_messages_key="input",
-            history_messages_key="history",
+            history_messages_key="chat_history",
         )
         self.message_store = {}
 
@@ -79,23 +72,47 @@ class LLMInterface:
 
 
     # Chain of Thought Method
+    def get_response_on_resume_and_job_description(self, state):
+        """
+            This function will use llm to assess resume and job_description match. Currently, its not returing the response. But the response is stored in the history.
+            TODO: the function can be modified to highlight matches and mismatches in keywords and provide a initial score.
+                  Summarize the resume?
+            This function will be called only once at the beginning.
+        """
+        print("Running evaluation on resume and job description")
+        prompt = f"""Resume: {resume_text} \n End of resume. \n\n Job description: {job_description} \n End of job description. \n
+            You are a world-class resume coach. Follow these steps to determine the match between the resume and the job description:
+            1. From the resume and job description, identify the top 5 areas of expertise.
+            2. List the areas of expertise from step 1 that are a match between the resume and the job description.
+            3. Identify the areas of expertise in the job description that are not covered in the resume. Share them in the response.
+            4. Based on the matches identified in step 2 and gaps in step 3, generate a score between 0 (lowest) and 10 (highest) to respresent the amount of match between the resume and the job description.
+            5. Come up with suggestions on how to improve the resume to cover the requirements in the job description.
+            6. Ask me if you can help answer any questions that I have about your response.
+            7. You are also an expert at writing personalized cover letters based on the resume and the job description
+            """
+        self.prn_state(state)
+        #state["id"] = self.generate_session_id()
+        state["analyze_resume_and_job_description"] = True
+        response = self.get_chain_with_history().invoke(
+            {"input": prompt},
+            {"configurable": {"session_id": state["id"]}}
+        )
+        self.prn_state(state)
+        return response, state
+
     def generate_cover_letter(self, resume_text, job_description):
         """
             Helps write cover letter matching the job description and resume
         """
-        prompt_template = f"""
+        prompt = f"""
         You are an expert at writing impressive cover letters based on resume {resume_text} and job description {job_description}"
         Use only the content mentioned in {resume_text} and dont make up words.
         """
-        prompt = ChatPromptTemplate.from_template(prompt_template)
-        chain = prompt | self.llm
-        response = chain.invoke({"resume_text" : resume_text, "job_description" : job_description})
-
-        #response = self.get_chain_with_history().invoke(
-        #        {"input" : prompt, "resume_text" : state["resume_text"], "job_description" : state["job_descr"]},
-        #        {"configurable" : {"session_id" : state["id"]}},
-        #        )
-        return response
+        response = self.get_chain_with_history().invoke(
+                {"input" : prompt},
+                {"configurable" : {"session_id" : state["id"]}},
+                )
+        return response, state
 
     def get_llm_cot_response(self, user_message, state):
         """
@@ -103,7 +120,7 @@ class LLMInterface:
         """
         print("In llm cot response : session id ", state["id"])
         response = self.get_chain_with_history().invoke(
-                    {"input": user_message, "resume_text" : state["resume_text"], "job_description" : state["job_descr"]},
+                    {"input": user_message},
                     {"configurable": {"session_id": state["id"]}}
                 )
         print(self.get_chain_with_history())
