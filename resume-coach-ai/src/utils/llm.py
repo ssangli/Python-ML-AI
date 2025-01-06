@@ -102,6 +102,7 @@ class LLMInterface:
             Main function getting LLM response with Chain of Thought Method
         """
         print("In llm cot response : session id ", state["id"])
+        print("Resume {}".format(state["resume_text"]))
         response = self.get_chain_with_history().invoke(
                     {"input": user_message, "resume_text" : state["resume_text"], "job_description" : state["job_descr"]},
                     {"configurable": {"session_id": state["id"]}}

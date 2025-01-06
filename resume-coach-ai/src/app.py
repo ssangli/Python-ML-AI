@@ -5,8 +5,10 @@ import gradio as gr
 import uuid
 import yaml
 import streamlit as st
-import io, PyPDF2
+import io, PyPDF2, os
 from io import StringIO
+from pprint import pprint
+import fitz, pymupdf
 
 # Globals
 llm = Ollama(model="llama3", base_url="http://127.0.0.1:11434")
@@ -59,13 +61,8 @@ def submit_job_descr():
 def on_file_upload():
     #print("disable {}".format(st.session_state["disable_file_upload"]))
     st.session_state["disable_file_upload"] = True
-    if uploaded_file is not None:
-        pdf_file = io.BytesIO(uploaded_file.getvalue())
-        pdf_reader = PyPDF2.PdfReader(pdf_file)
-        resume_text = ""
-        for page in pdf_reader.pages:
-            resume_text += page.extract_text()
-        st.session_state["resume_text"] = resume_text
+    print("uploaded_file {}".format(uploaded_file))
+
 
 def generate_session_id():
     myuuid = uuid.uuid4()
@@ -88,15 +85,22 @@ def clear_all_sidebar():
 
 # UI
 with st.sidebar:
+    st.title("I am your resume coach. Upload Resume and provide job description and start chatting")
     st.title("Upload Resume")
     uploaded_file = st.file_uploader(label="FileUpload", disabled = st.session_state["disable_file_upload"], accept_multiple_files = False, type=("pdf"), label_visibility="hidden", on_change=on_file_upload)
     if uploaded_file is not None:
         st.session_state["disable_file_upload"] = True
+        print("uploaded_file ", uploaded_file.name)
+        if os.path.exists(uploaded_file.name):
+            print("File exits")
+        else:
+            print("File does not exist")
         pdf_file = io.BytesIO(uploaded_file.getvalue())
-        pdf_reader = PyPDF2.PdfReader(pdf_file)
+        #pdf_reader = PyPDF2.PdfReader(pdf_file)
+        doc = fitz.open(stream=pdf_file, filetype="pdf")
         resume_text = ""
-        for page in pdf_reader.pages:
-            resume_text += page.extract_text()
+        for page in doc:
+            resume_text += page.get_text()
         st.session_state["resume_text"] = resume_text
     st.title("Add job description")
     job_descr = st.text_area(label="Job Description", disabled=st.session_state["disable_job_descr"])
@@ -108,7 +112,6 @@ with st.sidebar:
         with col2:
             st.button("Clear all", on_click = clear_all_sidebar)
 
-st.title("I am your resume coach. Upload Resume and provide job description and start chatting")
 if __name__ == '__main__':
     if prompt := st.chat_input():
         generate_session_id()
